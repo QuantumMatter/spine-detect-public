@@ -1,0 +1,33 @@
+{
+    "microns": {
+        "dataset": "minnie65_public",
+        "materialization": 1300,
+        "cell_types": [
+            "23P",
+            "4P"
+        ],
+        "neuron_density": 0.017,
+        "volume": [
+            [
+                500000,
+                940000,
+                870000
+            ],
+            [
+                600000,
+                1000000,
+                970000
+            ]
+        ],
+        "vessels": [
+            864691134966128927
+        ]
+    },
+    "chunk_gb": 4,
+    "naomi": {},
+    "chunk_size": [
+        33360,
+        20000,
+        100000
+    ]
+}
