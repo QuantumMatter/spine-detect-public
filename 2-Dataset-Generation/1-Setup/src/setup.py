@@ -21,6 +21,7 @@ def generate_neuron_list(client, bbox, cell_types, p):
     cells_in_bbox.discard(0)
 
     matching_cells_in_bbox = matching_cell_ids & cells_in_bbox
+    print(f'Number of matching neurons in volume: { len(matching_cell_ids) }')
 
     n_neurons = np.random.binomial(len(matching_cells_in_bbox), p)
     neurons = np.random.choice(list(matching_cells_in_bbox), n_neurons, replace=False)
