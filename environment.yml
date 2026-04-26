@@ -1,0 +1,14 @@
+name: spine-detect
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python==3.12.13
+  - pip=26.0.1
+  - ipykernel
+  - numpy=2.4.3
+  - tifffile
+  - pip:
+    - caveclient==8.0.1
+    - cloud_volume==12.8.0
+    - meshparty==2.0.3
