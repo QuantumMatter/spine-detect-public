@@ -205,8 +205,10 @@ def download_volume(seg_cv, dataset_dir: Path, volume_bbox: Bbox, chunk_size: Ve
 
 
 if __name__ == '__main__':
+    default_file = Path(__file__).parent.parent.parent / 'Data' / 'normal-volume-size' / 'sample_experiment.json'
+
     parser = ArgumentParser()
-    parser.add_argument('--file', default=Path("D:\\JHU\\BDD\\SpineDetect-Clean\\Data\\normal-volume-size\\sample_experiment.json"))
+    parser.add_argument('--file', default=default_file)
     parser.add_argument('--overwrite', action='store_true', default=False)
     parser.add_argument('--n', type=int, default=1)
 
