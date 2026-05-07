@@ -48,8 +48,10 @@ def accumulate(dataset_dir: Path, volume_size, chunk_size, overwrite=False):
 
 
 if __name__ == "__main__":
+    default_file = Path(__file__).parent.parent.parent / 'Data' / 'normal-volume-size' / 'sample_experiment.json'
+
     parser = ArgumentParser()
-    parser.add_argument('--file', default=Path("D:\\JHU\\BDD\\SpineDetect-Clean\\2-Dataset-Generation\\1-Setup\\sample_experiment.json"))
+    parser.add_argument('--file', default=default_file)
     parser.add_argument('--overwrite', action='store_true', default=False)
 
     args = parser.parse_args()
