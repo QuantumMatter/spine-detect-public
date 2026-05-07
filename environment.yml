@@ -12,3 +12,6 @@ dependencies:
     - caveclient==8.0.1
     - cloud_volume==12.8.0
     - meshparty==2.0.3
+    - tensorflow[and-cuda]
+    - keras
+    - natsort

@@ -4,6 +4,8 @@ The purpose of this project is to train a deep learning model to automatically s
 
 ## Project Setup
 
+Note that the environment uses the `tensorflow[and-cuda]` Python package, which is only supported on Linux. If you're using Windows, you must use WSL2. If you're on Mac, update the requirement in `environment.yml` with the approprate package name (probably just `tensorflow`)
+
 ```bash
 # Setup the virtual environment
 conda env create -f environment.yml
@@ -28,7 +30,6 @@ Once your environment is established, make sure you're authenticated with the MI
 |   |   |── README
 |   |   |── src
 |   |   └── run
-│   └── 2-NAOMi-PSF-Generation
 |
 ├── 2-Dataset-Generation
 │   ├── 1-Setup
