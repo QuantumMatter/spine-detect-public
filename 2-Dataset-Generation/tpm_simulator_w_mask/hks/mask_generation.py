@@ -26,6 +26,21 @@ def get_hks(
     root_ids, mesh_dict, client, distance_threshold=1000, 
     mapping_column="ctr_pt_position", side="post"
 ):
+    '''
+    Compute HKS features for a list of root_ids using their corresponding meshes.
+    
+    Parameters:
+    - root_ids: List of root IDs to process.
+    - mesh_dict: Dictionary mapping root IDs to their corresponding meshes.
+    - client: not used; left over from previous version where we filtered for annotated synapses.
+    - distance_threshold: not used.
+    - mapping_column: not used.
+    - side: not used.
+    
+    Returns:
+    - Dictionary containing HKS results for each root ID.
+    '''
+
     results = {}
     for root_id in root_ids:
         print(f"\nProcessing root_id: {root_id}")
@@ -39,7 +54,7 @@ def get_hks(
         raw_vertices = np.array(mesh.vertices, dtype=np.float32)
         raw_faces = np.array(mesh.faces, dtype=np.int64)
         
-        # 2. BYPASS THE BUG: Set query_indices=None 
+        # BYPASS THE BUG: Set query_indices=None 
         hks_result = chunked_hks_pipeline(
             mesh=(raw_vertices, raw_faces), 
             query_indices=None,  # <--- This prevents the crash!
@@ -59,6 +74,17 @@ def get_hks(
 def get_mesh(
     root_ids, client
 ):
+    '''
+    Fetch and heal meshes for a list of root_ids from the CAVEclient.
+    
+    Parameters:
+    - root_ids: List of root IDs to fetch meshes for.
+    - client: CAVEclient instance.
+    
+    Returns:
+    - Dictionary mapping root IDs to their corresponding meshes.
+    '''
+
     # --- Execution Block ---
     client.version = 1300
 
@@ -121,11 +147,25 @@ def get_mesh(
     return mesh_dict
 
 def generate_tags(hks_features, wd):
+    '''
+    Generate tag predictions from HKS features using a pre-trained ensemble model.
+     
+    Parameters:
+    - hks_features: HKS features for the vertices of a mesh.
+    - wd: Working directory where the pre-trained model is stored.
+     
+    Returns:
+    - Array of predicted tags for each vertex.
+    '''
+
+    # load pre-trained ensemble model
     ensemble_models = joblib.load(os.path.join(wd, r'rf_ensemble.pkl'))
 
+    # predict tags for each vertex using the ensemble
     preds = np.array([model.predict(hks_features) for model in ensemble_models])
     # shape: (n_models, n_samples)
 
+    # majority vote across models for each vertex
     tag_pred = np.array([
         Counter(preds[:, i]).most_common(1)[0][0]
         for i in range(preds.shape[1])
@@ -133,20 +173,46 @@ def generate_tags(hks_features, wd):
     return tag_pred
 
 def generate_submesh(vertex_mask, vertices, faces):
-        # 1. select faces
-        face_mask = vertex_mask[faces].all(axis=1)
-        selected_faces = faces[face_mask]
+    '''
+    Generate a submesh containing only the vertices that satisfy the vertex_mask.
+    
+    Parameters:
+    - vertex_mask: Boolean array indicating which vertices to include.
+    - vertices: Original vertex array of the mesh.
+    - faces: Original face array of the mesh.
 
-        # 2. build submesh
-        unique_vertices, new_indices = np.unique(selected_faces, return_inverse=True)
-        new_vertices = vertices[unique_vertices]
-        new_faces = new_indices.reshape(-1, 3)
-
-        submesh = trimesh.Trimesh(new_vertices, new_faces, process=False)
+    Returns:
+    - Submesh containing only the selected vertices and corresponding faces.
+    '''
         
-        return submesh
+    # 1. select faces
+    face_mask = vertex_mask[faces].all(axis=1)
+    selected_faces = faces[face_mask]
+
+    # 2. build submesh
+    unique_vertices, new_indices = np.unique(selected_faces, return_inverse=True)
+    new_vertices = vertices[unique_vertices]
+    new_faces = new_indices.reshape(-1, 3)
+
+    submesh = trimesh.Trimesh(new_vertices, new_faces, process=False)
+    
+    return submesh
 
 def mesh2mask(mesh, bbox_min, pitch, grid_size):
+    '''
+    Generate a binary mask from a mesh within a specified bounding box.
+
+    Parameters:
+    - mesh: Input mesh to be voxelized.
+    - bbox_min: Minimum coordinates of the bounding box.
+    - pitch: Voxel size.
+    - grid_size: Size of the grid (number of voxels along each axis - 1).
+
+    Returns:
+    - Binary mask representing the voxelized mesh.
+    '''
+
+    # Voxelize the mesh
     try:
         vox = mesh.voxelized(pitch=pitch)
         vox = vox.fill()
@@ -154,9 +220,11 @@ def mesh2mask(mesh, bbox_min, pitch, grid_size):
         print(f"Error occurred while voxelizing submesh: {e}")
         return None
 
+    # Convert voxel coordinates to grid indices
     points = vox.points   # coordinates of filled voxels
     indices = ((points - bbox_min) / pitch).astype(int)
 
+    # Create binary mask
     binary_mask = np.zeros(grid_size + 1, dtype=np.uint8)
 
     binary_mask[
@@ -165,6 +233,7 @@ def mesh2mask(mesh, bbox_min, pitch, grid_size):
         indices[:, 2]
     ] = 1
 
+    # Fill holes in the binary mask using morphological operations
     filled_mask = binary_mask # ndimage.binary_fill_holes(binary_mask)
     for x in range(binary_mask.shape[0]):
         filled_mask[x, :, :] = ndimage.binary_fill_holes(filled_mask[x, :, :])
@@ -173,12 +242,27 @@ def mesh2mask(mesh, bbox_min, pitch, grid_size):
     for z in range(binary_mask.shape[2]):
         filled_mask[:, :, z] = ndimage.binary_fill_holes(filled_mask[:, :, z])
 
+    # Apply morphological closing to smooth the mask
     filled_mask = ndimage.binary_closing(filled_mask, structure=np.ones((3,3,3)))
     # filled_mask = ndimage.binary_opening(filled_mask, structure=np.ones((3,3,3)))
     
     return filled_mask
 
 def generate_masks(simple_vertices, simple_faces, tag_pred, bbox_min, bbox_max, pitch):
+    '''
+    Generate binary masks for each unique tag in tag_pred by voxelizing the corresponding submesh.
+    
+    Parameters:
+    - simple_vertices: Vertex array of the mesh.
+    - simple_faces: Face array of the mesh.
+    - tag_pred: Array of predicted tags for each vertex.
+    - bbox_min: Minimum coordinates of the bounding box (in nm).
+    - bbox_max: Maximum coordinates of the bounding box (in nm).
+    - pitch: Voxel size.
+
+    Returns:
+    - 4D array of binary masks with shape (X, Y, Z, num_tags), where each channel corresponds to a unique tag.
+    '''
     extent = bbox_max - bbox_min
 
     grid_size = np.ceil(extent / pitch).astype(int)
@@ -205,6 +289,16 @@ def generate_masks(simple_vertices, simple_faces, tag_pred, bbox_min, bbox_max, 
     return masks
     
 def ensure_mutual_exclusion(masks):
+    '''
+     Ensure that the masks for different tags are mutually exclusive by applying a priority order.
+     
+     Parameters:
+     - masks: 4D array of binary masks with shape (X, Y, Z, num_tags).
+
+     Returns:
+     - 4D array of binary masks with mutual exclusivity enforced.
+     '''
+    
     # ensure masks are mutually exclusive
     masks[:,:,:,1] = masks[:,:,:,1] & (~masks[:,:,:,0])
     masks[:,:,:,2] = masks[:,:,:,2] & (~masks[:,:,:,0]) & (~masks[:,:,:,1])
@@ -212,6 +306,18 @@ def ensure_mutual_exclusion(masks):
     return masks
 
 def save_masks_as_tiff(masks, identifier, output_dir=DOWNLOAD_BASE):
+
+    '''
+    Save the generated masks as a multi-channel TIFF file.
+    Parameters:
+    - masks: 4D array of binary masks with shape (X, Y, Z, num_tags).
+    - identifier: Unique identifier to include in the filename.
+    - output_dir: Directory where the TIFF file will be saved.
+    
+    Returns:
+    - None
+    '''
+
     masks = masks.astype(np.uint8)  # Ensure data is uint8 for TIFF
     masks_tiff = np.transpose(masks, (2, 3, 1, 0))  # Move tag dimension to the front
     filename = f"masks_{identifier}.tiff"
@@ -228,6 +334,22 @@ def mask_generation_pipeline(
         bbox_max, 
         res_seg,
         wd = LOCAL_DIR):
+    '''
+    Main pipeline to generate masks from meshes for a list of root_ids.
+    
+    Parameters:
+    - identifier: Unique identifier for output files.
+    - root_ids: List of root IDs to process.
+    - client: CAVEclient instance.
+    - bbox_min: Minimum coordinates of the bounding box (in nm).
+    - bbox_max: Maximum coordinates of the bounding box (in nm).
+    - res_seg: Segmentation resolution.
+    - wd: Working directory.
+    
+    Returns:
+    - None
+    '''
+
     mesh_dict = get_mesh(root_ids, client)
     hks_results = get_hks(root_ids, mesh_dict, client)
 
