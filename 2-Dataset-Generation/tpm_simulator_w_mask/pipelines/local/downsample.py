@@ -28,6 +28,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 LOCAL_DIR = Path(__file__).resolve().parent
 DOWNLOAD_DIR = PROJECT_ROOT / "data" / "download"
 EM_OUTPUT_DIR = PROJECT_ROOT / "data" / "train" / "em"
+MASK_OUTPUT_DIR = PROJECT_ROOT / "data" / "train" / "masks"
 DOWNSAMPLE_OUTPUT_DIR = PROJECT_ROOT / "data" / "downsample"
 LOGS_DIR = LOCAL_DIR / "logs" / "downsample"
 
@@ -131,7 +132,13 @@ def _save_volume(out_folder: Path, chan_name: str, nid: str, out_vol: np.ndarray
     res_um = [r / 1000.0 for r in res_nm_z]
     resolution = (1.0 / res_um[1], 1.0 / res_um[0])
     if chan_name == "masks":
-        tf.imwrite(out_path, out_vol, resolution=resolution, photometric='minisblack', metadata={"spacing": res_um[2], "unit": "um", "axes": "ZCYX"}, imagej=True)
+        tf.imwrite(
+            out_path, 
+            out_vol, 
+            resolution=resolution, 
+            photometric='minisblack', 
+            metadata={"spacing": res_um[2], "unit": "um", "axes": "ZCYX"}, 
+            imagej=True)
     else:
         out_vol = (out_vol * 255).clip(0, 255).astype(np.uint8)
         tf.imwrite(
@@ -213,8 +220,10 @@ def main():
     for vol_path in tqdm(volumes, desc="Volumes"):
         nid = vol_path.name.replace("microns_", "")
         em_folder = EM_OUTPUT_DIR / vol_path.name
+        masks_folder = MASK_OUTPUT_DIR / vol_path.name
         downsample_folder = DOWNSAMPLE_OUTPUT_DIR / vol_path.name
         em_folder.mkdir(parents=True, exist_ok=True)
+        masks_folder.mkdir(parents=True, exist_ok=True)
         downsample_folder.mkdir(parents=True, exist_ok=True)
 
         download_content = _read_download_info(vol_path)
@@ -254,6 +263,7 @@ def main():
                 for ch in range(1, vol.shape[1]):
                     out_vol_masks[:, ch, :, :] = np.where(out_vol_masks[:, :ch, :, :].max(axis=1) > 0, 0, out_vol_masks[:, ch, :, :])
                 _save_volume(downsample_folder, chan_name, nid, out_vol_masks, res_nm_z)
+                _save_volume(masks_folder, chan_name, nid, out_vol_masks, res_nm_z)  # Also save to train/masks
                 shape_out_masks = (out_vol_masks.shape[3], out_vol_masks.shape[2], out_vol_masks.shape[0], out_vol_masks.shape[1])
                 log(f"  {chan_name} [downsample]: {shape_in[0]}x{shape_in[1]}x{shape_in[2]}x{shape_in[3]} -> {shape_out_masks[0]}x{shape_out_masks[1]}x{shape_out_masks[2]}x{shape_out_masks[3]}")
                 continue

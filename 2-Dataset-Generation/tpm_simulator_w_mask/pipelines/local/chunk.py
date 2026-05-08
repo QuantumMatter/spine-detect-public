@@ -39,6 +39,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 LOCAL_DIR = Path(__file__).resolve().parent
 DOWNsample_DIR = PROJECT_ROOT / "data" / "downsample"
 EM_DIR = PROJECT_ROOT / "data" / "train" / "em"
+MASK_DIR = PROJECT_ROOT / "data" / "train" / "masks"
 OUTPUT_DIR = PROJECT_ROOT / "data" / "chunk"
 LOGS_DIR = LOCAL_DIR / "logs" / "chunk"
 
@@ -283,13 +284,20 @@ def process_em_folder(input_path: Path, log, log_debug, logger) -> bool:
 
     nid = folder_name.replace("microns_", "")
 
+    mask_path = MASK_DIR / folder_name
+
     neurons_tiff = list(input_path.glob("neurons_*.tiff")) + list(input_path.glob("neurons_*.tif"))
+    masks_tiff = list(mask_path.glob("masks_*.tiff")) + list(mask_path.glob("masks_*.tif"))
     if not neurons_tiff:
         log(f"Skip (no neurons TIFF): {input_path}")
+        return False
+    if not masks_tiff:
+        log(f"Skip (no masks TIFF): {mask_path}")
         return False
 
     log(f"Processing EM: {folder_name}")
     neurons = load_volume_tiff(neurons_tiff[0])
+    masks = load_volume_tiff(masks_tiff[0])
 
     nx, ny, nz = neurons.shape
     if (nx, ny, nz) != (512, 512, 256):
@@ -298,6 +306,7 @@ def process_em_folder(input_path: Path, log, log_debug, logger) -> bool:
     # Crop Z: 32 from top and bottom -> 192
     z0, z1 = EM_Z_CROP, nz - EM_Z_CROP
     neurons = neurons[:, :, z0:z1]
+    masks = masks[:, :, z0:z1, :]
     nz_crop = neurons.shape[2]
     log(f"EM cropped Z: 256 -> {nz_crop}")
 
@@ -318,21 +327,29 @@ def process_em_folder(input_path: Path, log, log_debug, logger) -> bool:
             for ci in range(ncx):
                 chunk_idx = (ck * ncy + cj) * ncx + ci + 1
                 out_folder = EM_DIR / f"microns_{nid}_{chunk_idx:04d}"
+                masks_out_folder = MASK_DIR / f"microns_{nid}_{chunk_idx:04d}"
                 out_folder.mkdir(parents=True, exist_ok=True)
+                masks_out_folder.mkdir(parents=True, exist_ok=True)
 
                 x0, x1 = ci * CHUNK_SIZE_XY, min((ci + 1) * CHUNK_SIZE_XY, nx)
                 y0, y1 = cj * CHUNK_SIZE_XY, min((cj + 1) * CHUNK_SIZE_XY, ny)
                 z0_ch, z1_ch = ck * EM_CHUNK_SIZE_Z, min((ck + 1) * EM_CHUNK_SIZE_Z, nz_crop)
 
                 neur_chunk = neurons[x0:x1, y0:y1, z0_ch:z1_ch].copy()
+                masks_chunk = masks[x0:x1, y0:y1, z0_ch:z1_ch, :].copy()
 
                 chunk_shape = (CHUNK_SIZE_XY, CHUNK_SIZE_XY, EM_CHUNK_SIZE_Z)
                 if neur_chunk.shape != chunk_shape:
                     pad_n = np.zeros(chunk_shape, dtype=neur_chunk.dtype)
                     pad_n[: neur_chunk.shape[0], : neur_chunk.shape[1], : neur_chunk.shape[2]] = neur_chunk
                     neur_chunk = pad_n
+                if masks_chunk.shape[0:3] != chunk_shape:
+                    pad_m = np.zeros((*chunk_shape, masks_chunk.shape[3]), dtype=masks_chunk.dtype)
+                    pad_m[: masks_chunk.shape[0], : masks_chunk.shape[1], : masks_chunk.shape[2], :] = masks_chunk
+                    masks_chunk = pad_m
 
                 save_volume_tiff(out_folder / f"neurons_{nid}_{chunk_idx:04d}.tiff", neur_chunk, res_nm)
+                save_volume_tiff(masks_out_folder / f"masks_{nid}_{chunk_idx:04d}.tiff", masks_chunk, res_nm)
 
                 cx = ci * CHUNK_SIZE_XY + CHUNK_SIZE_XY // 2
                 cy = cj * CHUNK_SIZE_XY + CHUNK_SIZE_XY // 2
@@ -348,8 +365,10 @@ def process_em_folder(input_path: Path, log, log_debug, logger) -> bool:
                     "========================================",
                 ]
                 chunk_info_path = out_folder / "chunk_info.txt"
+                masks_chunk_info_path = masks_out_folder / "chunk_info.txt"
                 content = downsample_content.rstrip() + "\n" + "\n".join(chunk_section)
                 chunk_info_path.write_text(content, encoding="utf-8")
+                masks_chunk_info_path.write_text(content, encoding="utf-8")
 
                 pbar.update(1)
 
@@ -360,6 +379,11 @@ def process_em_folder(input_path: Path, log, log_debug, logger) -> bool:
         f.unlink()
     input_path.rmdir()
     log(f"Done EM: {folder_name} -> {total_chunks} chunks, removed original folder")
+
+    # Delete original masks/microns_{nid}/ folder and its contents
+    for f in mask_path.iterdir():
+        f.unlink()
+    mask_path.rmdir()
     return True
 
 
@@ -408,9 +432,11 @@ def main():
     log(f"Log: {log_file}")
     log(f"Downsample: {DOWNsample_DIR} ({len(ds_folders)} folders)")
     log(f"EM: {EM_DIR} ({len(em_folders)} folders)")
+    log(f"MASK: {MASK_DIR} (for copying masks from downsample to train)")
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     EM_DIR.mkdir(parents=True, exist_ok=True)
+    MASK_DIR.mkdir(parents=True, exist_ok=True)
 
     ok_ds = 0
     for i, input_path in enumerate(ds_folders, 1):
