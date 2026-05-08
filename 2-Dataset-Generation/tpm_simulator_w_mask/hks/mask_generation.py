@@ -390,7 +390,7 @@ if __name__ == "__main__":
     client = CAVEclient('minnie65_public')  # Initialize your client here
 
     identifier = root_ids[0]  # Use the first root_id as identifier for output files
-    bbox_min = np.array([1060288.0, 567936.0, 730880.0])  # Replace with actual bounding box min [32768, 32768, 81920]
+    bbox_min = np.array([1060288.0, 567936.0, 730880.0])  # Replace with actual bounding box min [991872.0, 485568.0, 597680.0]
     bbox_max = np.array([32.768, 32.768, 81.92]) * 1000 + bbox_min  # Replace with actual bounding box max [991872.0, 485568.0, 597680.0] + [32768, 32768, 81920]
     res_seg = np.array([64.0, 64.0, 80.0])  # Voxel size in nm
 
