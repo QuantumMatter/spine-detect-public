@@ -107,9 +107,9 @@ def train_groupkfold_ensemble(df, valid_labels=DEFAULT_VALID_LABELS, n_splits=5)
 
 
 def parse_args():
-    repo_root = Path(__file__).resolve().parents[2]
-    default_input = repo_root / "david" / "microns" / "ml_ready.csv"
-    default_output = Path(__file__).resolve().parent / "rf_ensemble.pkl"
+    script_dir = Path(__file__).resolve().parent
+    default_input = script_dir / "ml_ready.csv"
+    default_output = script_dir / "rf_ensemble.pkl"
 
     parser = argparse.ArgumentParser(
         description="Train the HKS Random Forest ensemble used by mask_generation.py."
